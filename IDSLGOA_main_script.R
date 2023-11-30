@@ -2,10 +2,7 @@ metabolites_to_go_inchikey <- function(iklist = "AADLTHQNYQJHQV-SVLGDMRNSA-N;ABV
 
   # load R objects. 
   load("go_names.RData")
-  load("ec_inchikey_links.RData")
-  load("inchikey_names.RData")
-  chemnames <- inchikey_names$V2
-  names(chemnames) <- inchikey_names$V3
+  load("ec_inchikey_links.RData") 
   load("go_obo_net.RData")
   load("ec2gene.RData")
   load("all_go_child_cpd_list_met_ik14.RData")
