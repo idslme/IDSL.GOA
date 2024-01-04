@@ -1,0 +1,292 @@
+## Script for creating the IDSL.GOA KB source files
+## Author Dinesh Barupal (dinesh.barupal@mssm.edu) Dec 2023
+
+# Expasy data download
+expasydata <- readLines("https://ftp.expasy.org/databases/enzyme/enzyme.dat")
+ec_numbers <- unique(gsub("ID   ","",expasydata[grep("^ID  ",expasydata)]))
+
+# EC to Gene Link from NCBI
+
+library(RCurl)
+for ( i in 1:length(ec_numbers)) {
+  qurl <- paste ( c ( 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=gene&term=%22',ec_numbers[i],'%22%5BEC%2FRN+Number%5D+AND+%22Homo%20sapiens%22[Organism]&retmode=json')    , collapse="")
+  writeLines(as.character(httr::GET(qurl)), paste(c("./gene_ec/",ec_numbers[i],".json"),collapse=""))
+  Sys.sleep(1)
+  print(i)
+}
+
+eclist <- dir("./gene_ec/", full.names = T)
+
+library(jsonlite)
+
+con1 <- file("ec2genes.txt","w")
+for(jj in 1:length(ec_numbers)) {
+  print(jj)
+  xjson <- fromJSON(paste0("./gene_ec/",ec_numbers[jj],".json"))
+  xdf <- cbind(ec_numbers[jj],xjson$esearchresult$idlist)
+  write.table(xdf, con1, row.names = F, sep="\t",quote = F)
+}
+close(con1)
+
+ec2gene <- read.delim("ec2genes.txt", header = T, stringsAsFactors = F)
+ec2gene <- ec2gene[grep("^[0-9]",ec2gene$V2),]
+
+save(ec2gene, file="ec2gene.RData")
+
+##################################################################
+### EC to Reaction links information from the PubChem database ###
+##################################################################
+
+ec_numbers <- unique(ec2gene$V1)
+
+for(ec in ec_numbers[1:length(ec_numbers)]){
+
+  download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22pathwayreaction%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22},{%22*%22:%22reactome%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_pathwayreaction_reactome-homo-sapiens%22}"), destfile = paste0("./pubchemrxn/",ec,"_reactome.csv"), quiet = T)
+
+  download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22pathwayreaction%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22},{%22*%22:%22biocyc%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_pathwayreaction_reactome-homo-sapiens%22}"), destfile = paste0("./pubchemrxn/",ec,"_biocyc.csv"), quiet = T)
+
+  download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22pathwayreaction%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22},{%22*%22:%22wikipathways%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_pathwayreaction_reactome-homo-sapiens%22}"), destfile = paste0("./pubchemrxn/",ec,"_wikipathways.csv"), quiet = T)
+
+  download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22rhea%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_rhea%22}"), destfile = paste0("./pubchemrxn/",ec,"_rhea.csv"), quiet = T)
+
+  Sys.sleep(10)
+
+}
+
+rxn_files <- dir("./pubchemrxn/")
+
+rxn_files_rhea <- rxn_files[grep("_rhea",rxn_files)]
+rxn_files_pdb <- rxn_files[-grep("_rhea",rxn_files)]
+
+rxn_pdf_list <- lapply(rxn_files_pdb,function(x){
+  read.csv(paste0("./pubchemrxn/",x), stringsAsFactors = F, header = T)
+})
+
+rxn_pdf_all <- data.frame(do.call(rbind, rxn_pdf_list), stringsAsFactors = F)
+
+rxn_rhea_list <- lapply(rxn_files_rhea,function(x){
+  read.csv(paste0("./pubchemrxn/",x), stringsAsFactors = F, header = T)
+})
+
+rxn_rhea_all <- data.frame(do.call(rbind, rxn_rhea_list), stringsAsFactors = F)
+
+ec_data_human <- rxn_pdf_all
+ec_data_human <- ec_data_human[grep("[0-9]",ec_data_human$cidsreactant),]
+ec_data_human <- ec_data_human[grep("[0-9]",ec_data_human$cidsproduct),]
+ec_data_human <- ec_data_human[grep("[0-9]",ec_data_human$ecs),]
+
+con1 <- file("pubchem_processed_pathways.txt","w")
+
+for (k in 1:nrow(ec_data_human)) {
+  print(k)
+  genes <- strsplit(ec_data_human$geneids[k], "[|]")[[1]]
+  ecs <- strsplit(ec_data_human$ecs[k], "[|]")[[1]]
+  subs <- strsplit(ec_data_human$cidsreactant[k], "[|]")[[1]]
+  prods <- strsplit(ec_data_human$cidsproduct[k], "[|]")[[1]]
+
+  for(sub in subs) {
+    for(ec in ecs) {
+      for (gene in genes) {
+        writeLines(paste0(gene,"\t",ec,"\t",sub,"\tsubstrate"), con1)
+      }
+    }
+  }
+
+  for(prod in prods) {
+    for(ec in ecs) {
+      for (gene in genes) {
+        writeLines(paste0(gene,"\t",ec,"\t",prod,"\tproduct"), con1)
+      }
+    }
+  }
+
+}
+close(con1)
+
+rxn_rhea_all <- data.frame(do.call(rbind, lapply(rxn_files_rhea,function(x){
+  read.csv(paste0("./pubchemrxn/",x), stringsAsFactors = F, header = T)
+})), stringsAsFactors = F)
+
+ec_data_human <- rxn_rhea_all
+ec_data_human <- ec_data_human[grep("[0-9]",ec_data_human$cidsreactant),]
+ec_data_human <- ec_data_human[grep("[0-9]",ec_data_human$cidsproduct),]
+ec_data_human <- ec_data_human[grep("[0-9]",ec_data_human$ecs),]
+
+con1 <- file("pubchem_processed_rhea.txt","w")
+
+for (k in 1:nrow(ec_data_human)) {
+  print(k)
+  genes <- strsplit(ec_data_human$geneids[k], "[|]")[[1]]
+  ecs <- strsplit(ec_data_human$ecs[k], "[|]")[[1]]
+  subs <- strsplit(ec_data_human$cidsreactant[k], "[|]")[[1]]
+  prods <- strsplit(ec_data_human$cidsproduct[k], "[|]")[[1]]
+
+  for(sub in subs) {
+    for(ec in ecs) {
+      for (gene in genes) {
+        writeLines(paste0(gene,"\t",ec,"\t",sub,"\tsubstrate"), con1)
+      }
+    }
+  }
+
+  for(prod in prods) {
+    for(ec in ecs) {
+      for (gene in genes) {
+        writeLines(paste0(gene,"\t",ec,"\t",prod,"\tproduct"), con1)
+      }
+    }
+  }
+
+}
+close(con1)
+
+pubchem_processed_rhea <- read.delim("pubchem_processed_rhea.txt", stringsAsFactors = F, header = F)
+pubchem_processed_pdb <- read.delim("pubchem_processed_pathways.txt", stringsAsFactors = F, header = F)
+
+ec_pubchem_processed <- rbind(pubchem_processed_rhea, pubchem_processed_pdb)
+ec_pubchem_processed.sb <- ec_pubchem_processed[!duplicated(ec_pubchem_processed),]
+
+gene_ec_cpd_human <- ec_pubchem_processed.sb
+save(gene_ec_cpd_human, file="gene_ec_cpd_human.RData")
+
+ec_cid_reactant <- gene_ec_cpd_human[,-1]
+ec_cid_reactant <- ec_cid_reactant[!duplicated(ec_cid_reactant),]
+writeLines(as.character(unique(ec_cid_reactant$V3)), "cid_new.txt")
+# Go to PubChem Identifiers Exchange Service and obtained the CID to InChiKey links.
+
+cid_ik_pc <- read.delim("cid_inchikey", header = F, stringsAsFactors = F)
+ik_vec <- cid_ik_pc$V2
+names(ik_vec) <- cid_ik_pc$V1
+
+title_vec <- cid_ik_pc$V3
+names(title_vec) <- cid_ik_pc$V2
+
+ec_cid_reactant <- ec_cid_reactant[,-3]
+ec_cid_reactant <- ec_cid_reactant[!duplicated(ec_cid_reactant),]
+
+ec_inchikey_links <- data.frame(V1=ec_cid_reactant$V2, V2= ik_vec[as.character(ec_cid_reactant$V3)], stringsAsFactors = F)
+ec_inchikey_links$V3 <- title_vec[ec_inchikey_links$V2]
+ec_inchikey_links <- ec_inchikey_links[order(ec_inchikey_links$V1),]
+ec_inchikey_links <- ec_inchikey_links[-grep("-",ec_inchikey_links$V1),]
+ec_inchikey_links <- ec_inchikey_links[grep("-",ec_inchikey_links$V2),]
+ec_inchikey_links <- ec_inchikey_links[grep("[A-Za-z0-9]",ec_inchikey_links$V3),]
+ec_inchikey_links$ik14 <- sapply(ec_inchikey_links$V2, function(x){strsplit(x,"-")[[1]][1]})
+save(ec_inchikey_links,file="ec_inchikey_links.RData")
+
+
+############################################
+## Gene Ontology Processing ###############
+###########################################
+
+download.file("http://purl.obolibrary.org/obo/go.obo",destfile = "go.obo")
+go_obo <- readLines("go.obo",n=-1L)
+
+startind <- which(go_obo=="[Term]")
+endind <- c((startind-1)[-1], length(go_obo))
+
+con1 <- file("gonetwork.txt","w")
+
+for(xx in 1:length(startind)) {
+  res1 <- go_obo[startind[xx]:endind[xx]]
+
+  goid <- (gsub("id: ","",res1[grep("^id:",res1)]))
+  is_a_vec <- unlist(strsplit(gsub("is_a: ","",res1[grep("^is_a:",res1)])," ! "))[grep("^GO:",unlist(strsplit(gsub("is_a: ","",res1[grep("^is_a:",res1)])," ! ")))]
+  writeLines(paste0(goid,"\t",is_a_vec), con1)
+  print(xx)
+}
+
+close(con1)
+
+go_obo_net <- read.delim("gonetwork.txt",header = F, stringsAsFactors = F)
+save(go_obo_net, file="go_obo_net.RData")
+
+###############################################
+######## NCBI Gene Information
+###############################################
+
+download.file("https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2accession.gz",destfile ="gene2accession.gz", quiet = F)
+human_accession <- read.delim("gene2accession.gz", header = T, stringsAsFactors = F)
+human_accession.reviwed <- human_accession[human_accession$status%in%c("REVIEWED","VALIDATED","MODEL"),]
+h_a_r_ec <- human_accession.reviwed[human_accession.reviwed$GeneID%in%ec2gene$V2,]
+human_accession.reviwed <- h_a_r_ec
+human_accession.reviwed <- human_accession.reviwed[,c("GeneID","RNA_nucleotide_gi","protein_gi","Symbol")]
+
+# NCBI Gene to GO information
+
+download.file("https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2go.gz",destfile = "gene2go.gz")
+gene2go <- read.delim("gene2go.gz")
+
+gene2go.human <- gene2go[gene2go$GeneID%in%human_accession.reviwed$GeneID,]
+gene2go.human <- gene2go.human[,c(2,3)]
+gene2go.human.sb <- gene2go.human[gene2go.human$GeneID%in%ec2gene$V2,]
+
+go_vec <- unique(gene2go.human.sb$GO_ID)
+
+go_df_list <- lapply(go_vec, function(go_id){
+  tec1 <- gene_ec_cpd_human$V3[gene_ec_cpd_human$V1%in%gene2go.human$GeneID[which(gene2go.human$GO_ID==go_id)]]
+  unique(tec1)
+})
+
+names(go_df_list) <- go_vec
+
+all_go_ids <- unique(c(go_obo_net[,1],go_obo_net[,2]))
+all_go_child_list <- lapply(all_go_ids, function(kgo){
+  query_go_org <- kgo
+  query_go <- kgo
+  child_go <- cbind(kgo,0)
+  nextround = TRUE
+  level = 0
+  while(nextround) {
+    child_go_next <- go_obo_net[go_obo_net[,2]%in%query_go,1]
+    if(length(child_go_next)==0){
+      nextround=FALSE
+    } else {
+      level = level +1
+      child_go  <- rbind(child_go,cbind(child_go_next[which(child_go_next!="")],level))
+      query_go <- child_go_next[which(child_go_next!="")]
+    }
+  }
+  child_go
+})
+
+names(all_go_child_list) <- all_go_ids
+
+all_go_child_cpd_list <- lapply(all_go_ids, function(kgo){
+  unique(as.character(unlist(go_df_list[unique(all_go_child_list[[kgo]][,1])])))
+})
+
+names(all_go_child_cpd_list) <- all_go_ids
+metabolic_go_process <- unique(all_go_child_list[["GO:0008152"]][,1])
+all_go_child_cpd_list_met <- all_go_child_cpd_list[metabolic_go_process]
+all_go_child_list_met <- all_go_child_list[metabolic_go_process]
+save(all_go_child_cpd_list_met,file="all_go_child_cpd_list_met.RData")
+
+
+all_go_child_gene_list <- lapply(all_go_ids, function(kgo){
+  unique(gene2go.human$GeneID[which(gene2go.human$GO_ID%in%unique(all_go_child_list[[kgo]][,1])==T)])
+})
+
+names(all_go_child_gene_list) <- all_go_ids
+
+all_go_child_gene_list_met <- all_go_child_gene_list[metabolic_go_process]
+save(all_go_child_gene_list_met,file="all_go_child_gene_list_met.RData")
+
+all_go_child_ec_list_met <- lapply(all_go_child_gene_list_met, function(kgo){
+  unique(ec2gene$V1[ec2gene$V2%in%kgo])
+})
+
+save(all_go_child_ec_list_met,file="all_go_child_ec_list_met.RData")
+
+all_go_child_cpd_list_met_ik14 <- lapply(all_go_child_cpd_list_met, function(ele) {
+    ek1 <-   unique(as.character(sapply(ele, function(ele_a) {strsplit(ele_a,"-")[[1]][1]}) ) )
+    ek1
+})
+
+all_go_child_cpd_list_met_ik14 <- all_go_child_cpd_list_met_ik14[which(sapply(all_go_child_cpd_list_met_ik14, length) > 0)]
+save(all_go_child_cpd_list_met_ik14, file="all_go_child_cpd_list_met_ik14.RData")
+
+################# Dec 2023 ##############
+
+
+
+
