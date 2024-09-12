@@ -42,11 +42,11 @@ ec_numbers <- unique(ec2gene$V1)
 for(ec in ec_numbers[1:length(ec_numbers)]){
 
   download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22pathwayreaction%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22},{%22*%22:%22reactome%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_pathwayreaction_reactome-homo-sapiens%22}"), destfile = paste0("./pubchemrxn/",ec,"_reactome.csv"), quiet = T)
-
+Sys.sleep(2)
   download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22pathwayreaction%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22},{%22*%22:%22biocyc%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_pathwayreaction_reactome-homo-sapiens%22}"), destfile = paste0("./pubchemrxn/",ec,"_biocyc.csv"), quiet = T)
-
+Sys.sleep(2)
   download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22pathwayreaction%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22},{%22*%22:%22wikipathways%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_pathwayreaction_reactome-homo-sapiens%22}"), destfile = paste0("./pubchemrxn/",ec,"_wikipathways.csv"), quiet = T)
-
+Sys.sleep(2)
   download.file(paste0("https://pubchem.ncbi.nlm.nih.gov/sdq/sdqagent.cgi?infmt=json&outfmt=csv&query={%22download%22:%22*%22,%22collection%22:%22rhea%22,%22where%22:{%22ands%22:[{%22ec%22:%22",ec,"%22}]},%22order%22:[%22relevancescore,desc%22],%22start%22:1,%22limit%22:10000000,%22downloadfilename%22:%22pubchem_ec_1.1.1.1_rhea%22}"), destfile = paste0("./pubchemrxn/",ec,"_rhea.csv"), quiet = T)
 
   Sys.sleep(10)
